@@ -45,7 +45,7 @@ $channelId = $dmResp.channel.id
 Write-Host "[INFO] DM Channel ID: $channelId"
 
 # === Upload URLの取得 ===
-$form = "filename=$([Uri]::EscapeDataString([IO.Path]::GetFileName($zip)))&length=$size"
+$form = "filename=$([Uri]::EscapeDataString($($zip | Split-Path -Leaf)))&length=$size"
 Write-Host "[DEBUG] Form-body for getUploadURLExternal: $form"
 
 $resp = Invoke-RestMethod -Method Post `
@@ -56,26 +56,23 @@ $resp = Invoke-RestMethod -Method Post `
 Write-Host "[DEBUG] Response from getUploadURLExternal:"
 Write-Host (ConvertTo-Json $resp -Depth 5)
 
-if (-not $resp.ok) {
-    Write-Error "[ERROR] getUploadURLExternal failed: $($resp.error)"
-    exit 1
-}
+if (-not $resp.ok) { Write-Error "[ERROR] getUploadURLExternal failed: $($resp.error)"; exit 1 }
 
 $uploadUrl = $resp.upload_url
 $fileId = $resp.file_id
 Write-Host "[INFO] Upload URL: $uploadUrl"
 Write-Host "[INFO] File ID: $fileId"
 
-# === アップロード（PUT）
+# === アップロード（PUT） ===
 Write-Host "[INFO] Uploading file via PUT..."
 Invoke-RestMethod -Method Put -Uri $uploadUrl -InFile $zip -ContentType "application/octet-stream"
 Write-Host "[INFO] File upload (PUT) completed"
 
-# === 完了通知
+# === 完了通知（DM チャネルに共有） ===
 $completeBody = @{
-  files           = @(@{ id = $fileId })
-  channel_id      = $channelId
-  initial_comment = "VPN ZIP uploaded"
+  files = @(@{ id = $fileId; title = "vpn_package.zip" })
+  channel_id = $channelId
+  initial_comment = "VPN パッケージをこちらからダウンロードできます。"
 }
 $completeJson = $completeBody | ConvertTo-Json -Depth 5
 Write-Host "[DEBUG] completeUploadExternal payload:"
@@ -89,31 +86,6 @@ $compResp = Invoke-RestMethod -Method Post `
 Write-Host "[DEBUG] completeUploadExternal response:"
 Write-Host (ConvertTo-Json $compResp -Depth 5)
 
-if (-not $compResp.ok) {
-    Write-Error "[ERROR] completeUploadExternal failed: $($compResp.error)"
-    exit 1
-}
+if (-not $compResp.ok) { Write-Error "[ERROR] completeUploadExternal failed: $($compResp.error)"; exit 1 }
 
-# === DM メッセージ送信（permalink使用） ===
-$permalink = $compResp.files[0].permalink
-Write-Host "[INFO] Slack File Permalink: $permalink"
-
-$msgBody = @{
-  channel = $channelId
-  text    = "VPN ZIP uploaded. Download: $permalink"
-} | ConvertTo-Json -Depth 3
-
-$msgResp = Invoke-RestMethod -Method Post `
-  -Uri "https://slack.com/api/chat.postMessage" `
-  -Headers @{ Authorization = "Bearer $token"; "Content-Type" = "application/json" } `
-  -Body $msgBody
-
-Write-Host "[DEBUG] chat.postMessage response:"
-Write-Host (ConvertTo-Json $msgResp -Depth 5)
-
-if (-not $msgResp.ok) {
-    Write-Error "[ERROR] chat.postMessage failed: $($msgResp.error)"
-    exit 1
-}
-
-Write-Host "[SUCCESS] Upload and DM notification completed with permalink!"
+Write-Host "[SUCCESS] File shared in DM channel."
