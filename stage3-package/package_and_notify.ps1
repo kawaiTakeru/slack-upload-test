@@ -1,124 +1,132 @@
 $ErrorActionPreference = "Stop"
 
-# --- Environment Variables ---
-$slackToken = $env:SLACK_BOT_TOKEN
+# 環境変数取得
+$slackToken     = $env:SLACK_BOT_TOKEN
 $slackUserEmail = $env:SLACK_USER_EMAIL
-$workingDir = "$env:BUILD_SOURCESDIRECTORY\stage3-package"
-$dummyFilePath = Join-Path $workingDir "dummy.txt"
-$zipFilePath = Join-Path $workingDir "vpn_package.zip"
 
-# --- Print Available Environment Variables ---
-Write-Host "[DEBUG] SLACK env vars:"
-Get-ChildItem Env: | Where-Object { $_.Name -like "SLACK*" } | ForEach-Object {
-    Write-Host "[DEBUG] $($_.Name) = $($_.Value)"
-}
-
-# --- Validate Token ---
+# --- トークン確認 ---
 if ([string]::IsNullOrEmpty($slackToken)) {
-    Write-Error "[ERROR] SLACK_BOT_TOKEN is null in script"
+    Write-Error "[ERROR] SLACK_BOT_TOKEN is null"
     exit 1
+} else {
+    Write-Host "[DEBUG] Slack token starts with: $($slackToken.Substring(0,10))..."
 }
-Write-Host "[DEBUG] Slack token starts with: $($slackToken.Substring(0, 10))..."
 
-# --- Create ZIP File ---
-Write-Host "[INFO] Creating dummy.txt…"
+# --- ファイル準備 ---
+$workingDir     = "$env:BUILD_SOURCESDIRECTORY\stage3-package"
+$dummyFilePath  = "$workingDir\dummy.txt"
+$zipFilePath    = "$workingDir\vpn_package.zip"
+
+Write-Host "[INFO] Creating dummy.txt..."
 Set-Content -Path $dummyFilePath -Value "This is a dummy file for Slack upload test."
-Write-Host "[INFO] Compressing to ZIP…"
+
+Write-Host "[INFO] Compressing to ZIP..."
 Compress-Archive -Path $dummyFilePath -DestinationPath $zipFilePath -Force
 
-# --- Step 1: Get Upload URL ---
 $length = (Get-Item $zipFilePath).Length
+Write-Host "[DEBUG] Zip file size (bytes): $length"
+
+# --- Step 1: getUploadURLExternal ---
 $uploadRequest = @{
     filename = "vpn_package.zip"
-    length   = [int64]$length
+    length   = $length
     alt_text = "Test ZIP"
 }
-Write-Host "[DEBUG] JSON body for getUploadURLExternal:"
-$uploadRequest | ConvertTo-Json -Depth 10 | Write-Host
+$bodyJson = $uploadRequest | ConvertTo-Json -Depth 5
+Write-Host "[DEBUG] JSON body for getUploadURLExternal:`n$bodyJson"
 
-Write-Host "[DEBUG] Sending headers:"
-Write-Host "Authorization: Bearer ***"
-Write-Host "Content-Type: application/json; charset=utf-8"
-
-$uploadUrlResp = Invoke-RestMethod -Method POST `
+Write-Host "[INFO] Requesting upload URL..."
+$response = Invoke-RestMethod -Method Post `
     -Uri "https://slack.com/api/files.getUploadURLExternal" `
-    -Headers @{ Authorization = "Bearer $slackToken" } `
-    -ContentType "application/json; charset=utf-8" `
-    -Body ($uploadRequest | ConvertTo-Json -Depth 10)
+    -Headers @{ Authorization = "Bearer $slackToken"; "Content-Type" = "application/json; charset=utf-8" } `
+    -Body $bodyJson `
+    -ResponseHeadersVariable respHdr `
+    -ErrorAction Stop
 
-Write-Host "[DEBUG] Response:"
-$uploadUrlResp | ConvertTo-Json -Depth 10 | Write-Host
+Write-Host "[DEBUG] HTTP status code: $($respHdr.StatusCode.Value__)"
+Write-Host "[DEBUG] Response JSON:`n$( $response | ConvertTo-Json -Depth 5 )"
 
-$uploadUrl = $uploadUrlResp.upload_url
-$fileId = $uploadUrlResp.file_id
-
-if ([string]::IsNullOrEmpty($uploadUrl) -or [string]::IsNullOrEmpty($fileId)) {
-    Write-Error "[ERROR] getUploadURLExternal failed: $($uploadUrlResp.error)"
+if (-not $response.ok -or -not $response.upload_url -or -not $response.file_id) {
+    Write-Error "[ERROR] getUploadURLExternal failed: $($response.error)"
     exit 1
 }
-
-Write-Host "[INFO] Upload URL: $uploadUrl"
+$uploadUrl = $response.upload_url
+$fileId    = $response.file_id
+Write-Host "[INFO] Upload URL received."
 Write-Host "[INFO] File ID: $fileId"
 
-# --- Step 2: PUT Upload ---
-Write-Host "[INFO] Uploading ZIP via PUT..."
-Invoke-RestMethod -Method Put -Uri $uploadUrl -InFile $zipFilePath -ContentType "application/zip"
-Write-Host "[INFO] Upload completed."
+# --- Step 2: Upload (PUT or multipart POST) ---
+Write-Host "[INFO] Uploading file via POST to upload_url..."
+# Slack docs allows raw bytes or multipart form:
+$resultUpload = Invoke-RestMethod -Method Put -Uri $uploadUrl -InFile $zipFilePath -ContentType "application/zip" -ErrorAction Stop
+Write-Host "[DEBUG] Upload return: $resultUpload"
 
-# --- Step 3: Complete Upload ---
+# --- Step 3: completeUploadExternal ---
 $completeReq = @{
     files = @(@{
         id       = $fileId
-        title    = "VPN ZIP"
-        alt_text = "VPN Test ZIP file"
+        title    = "Test VPN ZIP"
+        alt_text = "Test ZIP uploaded"
     })
 }
-$response = Invoke-RestMethod -Method POST `
+$completeJson = $completeReq | ConvertTo-Json -Depth 5
+Write-Host "[DEBUG] JSON body for completeUploadExternal:`n$completeJson"
+
+$response2 = Invoke-RestMethod -Method Post `
     -Uri "https://slack.com/api/files.completeUploadExternal" `
-    -Headers @{ Authorization = "Bearer $slackToken" } `
-    -ContentType "application/json" `
-    -Body ($completeReq | ConvertTo-Json -Depth 10)
+    -Headers @{ Authorization = "Bearer $slackToken"; "Content-Type" = "application/json; charset=utf-8" } `
+    -Body $completeJson -ErrorAction Stop
 
-Write-Host "[DEBUG] completeUploadExternal response:"
-$response | ConvertTo-Json -Depth 10 | Write-Host
+Write-Host "[DEBUG] completeUpload response:`n$($response2 | ConvertTo-Json -Depth 5)"
+if (-not $response2.ok) {
+    Write-Error "[ERROR] completeUploadExternal failed: $($response2.error)"
+    exit 1
+}
 
-# --- Step 4: Open DM Channel ---
-Write-Host "[INFO] Looking up user: $slackUserEmail"
-$userInfo = Invoke-RestMethod -Method POST `
+# --- Step 4: DM ワークフロー ---
+Write-Host "[INFO] Looking up user by email: $slackUserEmail"
+$userInfo = Invoke-RestMethod -Method Post `
     -Uri "https://slack.com/api/users.lookupByEmail" `
     -Headers @{ Authorization = "Bearer $slackToken" } `
+    -ContentType "application/x-www-form-urlencoded" `
     -Body @{ email = $slackUserEmail }
 
 $userId = $userInfo.user.id
-Write-Host "[INFO] Found user ID: $userId"
+Write-Host "[INFO] User ID: $userId"
 
-$channelResp = Invoke-RestMethod -Method POST `
+$channelResp = Invoke-RestMethod -Method Post `
     -Uri "https://slack.com/api/conversations.open" `
     -Headers @{ Authorization = "Bearer $slackToken" } `
+    -ContentType "application/x-www-form-urlencoded" `
     -Body @{ users = $userId }
 
 $channelId = $channelResp.channel.id
-Write-Host "[INFO] DM channel ID: $channelId"
+Write-Host "[INFO] Opened DM channel ID: $channelId"
 
-# --- Step 5: Send Message with File Link ---
+# --- Step 5: 発言投稿 ---
 $messageReq = @{
-    channel = $channelId
-    text    = "🔔 VPN ZIP file uploaded."
+    channel     = $channelId
+    text        = "🔔 VPN test ZIP file has been uploaded."
     attachments = @(
         @{
-            fallback    = "vpn_package.zip"
-            title       = "VPN ZIP"
-            title_link  = "https://files.slack.com/files-pri/$fileId"
+            fallback   = "vpn_package.zip"
+            title      = "VPN ZIP File"
+            title_link = "https://files.slack.com/files-pri/$fileId"
         }
     )
 }
-$result = Invoke-RestMethod -Method POST `
-    -Uri "https://slack.com/api/chat.postMessage" `
-    -Headers @{ Authorization = "Bearer $slackToken" } `
-    -ContentType "application/json" `
-    -Body ($messageReq | ConvertTo-Json -Depth 10)
+$messageJson = $messageReq | ConvertTo-Json -Depth 5
+Write-Host "[DEBUG] JSON body for chat.postMessage:`n$messageJson"
 
-Write-Host "[DEBUG] chat.postMessage response:"
-$result | ConvertTo-Json -Depth 10 | Write-Host
+$response3 = Invoke-RestMethod -Method Post `
+    -Uri "https://slack.com/api/chat.postMessage" `
+    -Headers @{ Authorization = "Bearer $slackToken"; "Content-Type" = "application/json; charset=utf-8" } `
+    -Body $messageJson -ErrorAction Stop
+
+Write-Host "[DEBUG] chat.postMessage response:`n$($response3 | ConvertTo-Json -Depth 5)"
+if (-not $response3.ok) {
+    Write-Error "[ERROR] chat.postMessage failed: $($response3.error)"
+    exit 1
+}
 
 Write-Host "[✅ SUCCESS] Slack message sent!"
