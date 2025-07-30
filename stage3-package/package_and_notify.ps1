@@ -33,7 +33,7 @@ try {
   $userId = $userResp.user.id
   Write-Host "[INFO] Slack user ID: $userId"
 } catch {
-  Write-Error "[ERROR] Failed to get user ID: $($_.Exception.Message)"
+  Write-Error ("[ERROR] Failed to get user ID: {0}" -f $_.Exception.Message)
   exit 1
 }
 
@@ -42,7 +42,7 @@ Write-Host '[INFO] Opening DM channel...'
 try {
   $dmResp = Invoke-RestMethod -Method Post `
     -Uri "https://slack.com/api/conversations.open" `
-    -Headers @{ Authorization = "Bearer $token", "Content-Type" = "application/json" } `
+    -Headers @{ Authorization = "Bearer $token"; "Content-Type" = "application/json" } `
     -Body (@{ users = $userId } | ConvertTo-Json)
   Write-Host "[DEBUG] conversations.open response:"
   Write-Host (ConvertTo-Json $dmResp -Depth 10)
@@ -50,7 +50,7 @@ try {
   $channelId = $dmResp.channel.id
   Write-Host "[INFO] DM Channel ID: $channelId"
 } catch {
-  Write-Error "[ERROR] Failed to open DM channel: $($_.Exception.Message)"
+  Write-Error ("[ERROR] Failed to open DM channel: {0}" -f $_.Exception.Message)
   exit 1
 }
 
@@ -60,7 +60,7 @@ Write-Host "[DEBUG] Form-body for getUploadURLExternal: $form"
 try {
   $resp = Invoke-RestMethod -Method Post `
     -Uri "https://slack.com/api/files.getUploadURLExternal" `
-    -Headers @{ Authorization = "Bearer $token", "Content-Type" = "application/x-www-form-urlencoded" } `
+    -Headers @{ Authorization = "Bearer $token"; "Content-Type" = "application/x-www-form-urlencoded" } `
     -Body $form
   Write-Host "[DEBUG] getUploadURLExternal response:"
   Write-Host (ConvertTo-Json $resp -Depth 10)
@@ -70,7 +70,7 @@ try {
   Write-Host "[INFO] Upload URL: $uploadUrl"
   Write-Host "[INFO] File ID: $fileId"
 } catch {
-  Write-Error "[ERROR] Failed to get upload URL: $($_.Exception.Message)"
+  Write-Error ("[ERROR] Failed to get upload URL: {0}" -f $_.Exception.Message)
   exit 1
 }
 
@@ -80,7 +80,7 @@ try {
   Invoke-RestMethod -Method Put -Uri $uploadUrl -InFile $zip -ContentType "application/octet-stream"
   Write-Host '[INFO] File upload (PUT) completed'
 } catch {
-  Write-Error "[ERROR] PUT upload failed: $($_.Exception.Message)"
+  Write-Error ("[ERROR] PUT upload failed: {0}" -f $_.Exception.Message)
   exit 1
 }
 
@@ -97,7 +97,7 @@ Write-Host $completeJson
 try {
   $compResp = Invoke-RestMethod -Method Post `
     -Uri 'https://slack.com/api/files.completeUploadExternal' `
-    -Headers @{ Authorization = "Bearer $token", "Content-Type" = "application/json" } `
+    -Headers @{ Authorization = "Bearer $token"; "Content-Type" = "application/json" } `
     -Body $completeJson
   Write-Host '[DEBUG] completeUploadExternal response:'
   Write-Host (ConvertTo-Json $compResp -Depth 10)
@@ -106,7 +106,7 @@ try {
     exit 1
   }
 } catch {
-  Write-Error "[ERROR] completeUploadExternal exception: $($_.Exception.Message)"
+  Write-Error ("[ERROR] completeUploadExternal exception: {0}" -f $_.Exception.Message)
   exit 1
 }
 
