@@ -42,7 +42,7 @@ Write-Host '[INFO] Opening DM channel...'
 try {
   $dmResp = Invoke-RestMethod -Method Post `
     -Uri "https://slack.com/api/conversations.open" `
-    -Headers @{ Authorization = "Bearer $token"; "Content-Type" = "application/json" } `
+    -Headers @{ Authorization = "Bearer $token", "Content-Type" = "application/json" } `
     -Body (@{ users = $userId } | ConvertTo-Json)
   Write-Host "[DEBUG] conversations.open response:"
   Write-Host (ConvertTo-Json $dmResp -Depth 10)
@@ -60,7 +60,7 @@ Write-Host "[DEBUG] Form-body for getUploadURLExternal: $form"
 try {
   $resp = Invoke-RestMethod -Method Post `
     -Uri "https://slack.com/api/files.getUploadURLExternal" `
-    -Headers @{ Authorization = "Bearer $token"; "Content-Type" = "application/x-www-form-urlencoded" } `
+    -Headers @{ Authorization = "Bearer $token", "Content-Type" = "application/x-www-form-urlencoded" } `
     -Body $form
   Write-Host "[DEBUG] getUploadURLExternal response:"
   Write-Host (ConvertTo-Json $resp -Depth 10)
@@ -97,7 +97,7 @@ Write-Host $completeJson
 try {
   $compResp = Invoke-RestMethod -Method Post `
     -Uri 'https://slack.com/api/files.completeUploadExternal' `
-    -Headers @{ Authorization = "Bearer $token"; "Content-Type" = "application/json" } `
+    -Headers @{ Authorization = "Bearer $token", "Content-Type" = "application/json" } `
     -Body $completeJson
   Write-Host '[DEBUG] completeUploadExternal response:'
   Write-Host (ConvertTo-Json $compResp -Depth 10)
