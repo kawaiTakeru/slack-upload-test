@@ -1,39 +1,52 @@
-# 環境変数からWebhookやユーザー情報などを取得
+$ErrorActionPreference = "Stop"
+
+# Environment variables
 $slackToken = $env:SLACK_BOT_TOKEN
 $slackUserEmail = $env:SLACK_USER_EMAIL
 $workingDir = "$env:BUILD_SOURCESDIRECTORY\stage3-package"
 $dummyFilePath = "$workingDir\dummy.txt"
 $zipFilePath = "$workingDir\vpn_package.zip"
 
-# ダミーファイル作成
+# Create dummy file
+Write-Host "[INFO] Creating dummy.txt..."
 Set-Content -Path $dummyFilePath -Value "This is a dummy file for Slack upload test."
 
-# ZIP作成
+# Zip it
+Write-Host "[INFO] Creating ZIP file..."
 Compress-Archive -Path $dummyFilePath -DestinationPath $zipFilePath -Force
 
-# ① アップロードURL取得
+# Step 1: Request upload URL
 $uploadRequest = @{
     filename = "vpn_package.zip"
     length   = (Get-Item $zipFilePath).Length
     alt_text = "Test ZIP"
 }
-Write-Host "📤 files.getUploadURLExternal 送信中..."
+Write-Host "[INFO] Requesting upload URL from Slack..."
 $uploadUrlResp = Invoke-RestMethod -Method POST -Uri "https://slack.com/api/files.getUploadURLExternal" `
     -Headers @{ Authorization = "Bearer $slackToken" } `
     -ContentType "application/json" `
     -Body (ConvertTo-Json $uploadRequest -Depth 10)
 
+Write-Host "[DEBUG] files.getUploadURLExternal response:"
+$uploadUrlResp | ConvertTo-Json -Depth 10 | Write-Host
+
 $uploadUrl = $uploadUrlResp.upload_url
 $fileId = $uploadUrlResp.file_id
-Write-Host "✅ upload_url: $uploadUrl"
-Write-Host "✅ file_id: $fileId"
 
-# ② ファイルをPUTアップロード
-Write-Host "📦 PUTアップロード開始..."
+if ([string]::IsNullOrEmpty($uploadUrl) -or [string]::IsNullOrEmpty($fileId)) {
+    Write-Error "[ERROR] Slack did not return upload_url or file_id. Aborting."
+    exit 1
+}
+
+Write-Host "[INFO] Upload URL received: $uploadUrl"
+Write-Host "[INFO] File ID received: $fileId"
+
+# Step 2: PUT upload
+Write-Host "[INFO] Uploading file via PUT..."
 Invoke-RestMethod -Method Put -Uri $uploadUrl -InFile $zipFilePath -ContentType "application/zip"
-Write-Host "✅ アップロード完了"
+Write-Host "[INFO] File upload completed."
 
-# ③ アップロード完了通知
+# Step 3: Notify upload completion
 $completeReq = @{
     files = @(@{
         id        = $fileId
@@ -41,33 +54,35 @@ $completeReq = @{
         alt_text  = "Test ZIP uploaded"
     })
 }
-Write-Host "📨 files.completeUploadExternal 実行中..."
-Invoke-RestMethod -Method POST -Uri "https://slack.com/api/files.completeUploadExternal" `
+Write-Host "[INFO] Completing file upload in Slack..."
+$response = Invoke-RestMethod -Method POST -Uri "https://slack.com/api/files.completeUploadExternal" `
     -Headers @{ Authorization = "Bearer $slackToken" } `
     -ContentType "application/json" `
     -Body (ConvertTo-Json $completeReq -Depth 10)
-Write-Host "✅ アップロード完了通知 OK"
 
-# ④ ユーザーDMチャンネルを開く
-Write-Host "🔍 Slack ID lookup 開始..."
+Write-Host "[DEBUG] files.completeUploadExternal response:"
+$response | ConvertTo-Json -Depth 10 | Write-Host
+
+# Step 4: Open DM
+Write-Host "[INFO] Looking up user by email: $slackUserEmail"
 $userInfo = Invoke-RestMethod -Method POST -Uri "https://slack.com/api/users.lookupByEmail" `
     -Headers @{ Authorization = "Bearer $slackToken" } `
     -Body @{ email = $slackUserEmail }
 
 $userId = $userInfo.user.id
-Write-Host "✅ Slack user ID: $userId"
+Write-Host "[INFO] User ID: $userId"
 
 $channelResp = Invoke-RestMethod -Method POST -Uri "https://slack.com/api/conversations.open" `
     -Headers @{ Authorization = "Bearer $slackToken" } `
     -Body @{ users = $userId }
 
 $channelId = $channelResp.channel.id
-Write-Host "✅ DM channel ID: $channelId"
+Write-Host "[INFO] DM Channel ID: $channelId"
 
-# ⑤ メッセージ送信
+# Step 5: Send message
 $messageReq = @{
     channel = $channelId
-    text    = "🔔 VPNテストファイルをアップロードしました"
+    text    = "🔔 VPN test ZIP file has been uploaded."
     attachments = @(
         @{
             fallback = "vpn_package.zip"
@@ -76,9 +91,13 @@ $messageReq = @{
         }
     )
 }
-Write-Host "📩 メッセージ送信中..."
-Invoke-RestMethod -Method POST -Uri "https://slack.com/api/chat.postMessage" `
+Write-Host "[INFO] Sending Slack message..."
+$result = Invoke-RestMethod -Method POST -Uri "https://slack.com/api/chat.postMessage" `
     -Headers @{ Authorization = "Bearer $slackToken" } `
     -ContentType "application/json" `
     -Body (ConvertTo-Json $messageReq -Depth 10)
-Write-Host "✅ メッセージ送信成功！"
+
+Write-Host "[DEBUG] chat.postMessage response:"
+$result | ConvertTo-Json -Depth 10 | Write-Host
+
+Write-Host "[✅ SUCCESS] Slack message sent!"
