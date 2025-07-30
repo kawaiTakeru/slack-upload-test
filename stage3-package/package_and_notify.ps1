@@ -71,7 +71,7 @@ Write-Host "[INFO] Uploading file via PUT..."
 Invoke-RestMethod -Method Put -Uri $uploadUrl -InFile $zip -ContentType "application/octet-stream"
 Write-Host "[INFO] File upload (PUT) completed"
 
-# === 完了通知 ===
+# === 完了通知
 $completeBody = @{
   files           = @(@{ id = $fileId })
   channel_id      = $channelId
@@ -94,4 +94,24 @@ if (-not $compResp.ok) {
     exit 1
 }
 
-Write-Host "[✅ SUCCESS] Upload workflow completed!"
+# === DM テストメッセージ送信 ===
+Write-Host "[INFO] Sending test message to DM..."
+$msgBody = @{
+  channel = $channelId
+  text    = "✅ VPN ZIP has been successfully uploaded and delivered via DM."
+} | ConvertTo-Json -Depth 3
+
+$msgResp = Invoke-RestMethod -Method Post `
+  -Uri "https://slack.com/api/chat.postMessage" `
+  -Headers @{ Authorization = "Bearer $token"; "Content-Type" = "application/json" } `
+  -Body $msgBody
+
+Write-Host "[DEBUG] chat.postMessage response:"
+Write-Host (ConvertTo-Json $msgResp -Depth 5)
+
+if (-not $msgResp.ok) {
+    Write-Error "[ERROR] chat.postMessage failed: $($msgResp.error)"
+    exit 1
+}
+
+Write-Host "[✅ SUCCESS] Upload and DM notification completed!"
