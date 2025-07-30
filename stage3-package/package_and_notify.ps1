@@ -23,48 +23,56 @@ Write-Host "[DEBUG] ZIP size: $size bytes"
 
 # === ユーザーID取得 ===
 Write-Host '[INFO] Getting Slack user ID from email...'
-$userResp = Invoke-RestMethod -Method Get `
-  -Uri "https://slack.com/api/users.lookupByEmail?email=$($email)" `
-  -Headers @{ Authorization = "Bearer $token" }
-
-Write-Host "[DEBUG] users.lookupByEmail response:"
-Write-Host (ConvertTo-Json $userResp -Depth 10)
-if (-not $userResp.ok) { Write-Error "[ERROR] users.lookupByEmail failed: $($userResp.error)"; exit 1 }
-
-$userId = $userResp.user.id
-Write-Host "[INFO] Slack user ID: $userId"
+try {
+  $userResp = Invoke-RestMethod -Method Get `
+    -Uri "https://slack.com/api/users.lookupByEmail?email=$($email)" `
+    -Headers @{ Authorization = "Bearer $token" }
+  Write-Host "[DEBUG] users.lookupByEmail response:"
+  Write-Host (ConvertTo-Json $userResp -Depth 10)
+  if (-not $userResp.ok) { throw "users.lookupByEmail failed: $($userResp.error)" }
+  $userId = $userResp.user.id
+  Write-Host "[INFO] Slack user ID: $userId"
+} catch {
+  Write-Error "[ERROR] Failed to get user ID: $($_.Exception.Message)"
+  exit 1
+}
 
 # === DM チャネル作成 ===
 Write-Host '[INFO] Opening DM channel...'
-$dmResp = Invoke-RestMethod -Method Post `
-  -Uri "https://slack.com/api/conversations.open" `
-  -Headers @{ Authorization = "Bearer $token"; "Content-Type" = "application/json" } `
-  -Body (@{ users = $userId } | ConvertTo-Json)
-
-Write-Host "[DEBUG] conversations.open response:"
-Write-Host (ConvertTo-Json $dmResp -Depth 10)
-if (-not $dmResp.ok) { Write-Error "[ERROR] conversations.open failed: $($dmResp.error)"; exit 1 }
-
-$channelId = $dmResp.channel.id
-Write-Host "[INFO] DM Channel ID: $channelId"
+try {
+  $dmResp = Invoke-RestMethod -Method Post `
+    -Uri "https://slack.com/api/conversations.open" `
+    -Headers @{ Authorization = "Bearer $token"; "Content-Type" = "application/json" } `
+    -Body (@{ users = $userId } | ConvertTo-Json)
+  Write-Host "[DEBUG] conversations.open response:"
+  Write-Host (ConvertTo-Json $dmResp -Depth 10)
+  if (-not $dmResp.ok) { throw "conversations.open failed: $($dmResp.error)" }
+  $channelId = $dmResp.channel.id
+  Write-Host "[INFO] DM Channel ID: $channelId"
+} catch {
+  Write-Error "[ERROR] Failed to open DM channel: $($_.Exception.Message)"
+  exit 1
+}
 
 # === Upload URL 取得 ===
 $form = "filename=$([Uri]::EscapeDataString($($zip | Split-Path -Leaf)))&length=$size"
 Write-Host "[DEBUG] Form-body for getUploadURLExternal: $form"
-
-$resp = Invoke-RestMethod -Method Post `
-  -Uri "https://slack.com/api/files.getUploadURLExternal" `
-  -Headers @{ Authorization = "Bearer $token"; "Content-Type" = "application/x-www-form-urlencoded" } `
-  -Body $form
-
-Write-Host "[DEBUG] getUploadURLExternal response:"
-Write-Host (ConvertTo-Json $resp -Depth 10)
-if (-not $resp.ok) { Write-Error "[ERROR] getUploadURLExternal failed: $($resp.error)"; exit 1 }
-
-$uploadUrl = $resp.upload_url
-$fileId = $resp.file_id
-Write-Host "[INFO] Upload URL: $uploadUrl"
-Write-Host "[INFO] File ID: $fileId"
+try {
+  $resp = Invoke-RestMethod -Method Post `
+    -Uri "https://slack.com/api/files.getUploadURLExternal" `
+    -Headers @{ Authorization = "Bearer $token"; "Content-Type" = "application/x-www-form-urlencoded" } `
+    -Body $form
+  Write-Host "[DEBUG] getUploadURLExternal response:"
+  Write-Host (ConvertTo-Json $resp -Depth 10)
+  if (-not $resp.ok) { throw "getUploadURLExternal failed: $($resp.error)" }
+  $uploadUrl = $resp.upload_url
+  $fileId = $resp.file_id
+  Write-Host "[INFO] Upload URL: $uploadUrl"
+  Write-Host "[INFO] File ID: $fileId"
+} catch {
+  Write-Error "[ERROR] Failed to get upload URL: $($_.Exception.Message)"
+  exit 1
+}
 
 # === PUT アップロード ===
 Write-Host '[INFO] Uploading file via PUT...'
@@ -72,7 +80,7 @@ try {
   Invoke-RestMethod -Method Put -Uri $uploadUrl -InFile $zip -ContentType "application/octet-stream"
   Write-Host '[INFO] File upload (PUT) completed'
 } catch {
-  Write-Error "[ERROR] PUT upload failed: $_"
+  Write-Error "[ERROR] PUT upload failed: $($_.Exception.Message)"
   exit 1
 }
 
@@ -86,20 +94,11 @@ $completeJson = $completeBody | ConvertTo-Json -Depth 5
 Write-Host '[DEBUG] completeUploadExternal payload:'
 Write-Host $completeJson
 
-# ヘッダー値を事前に構成（構文安全な形式）
-$authHeader = "Bearer {0}" -f $token
-$params = @{
-  Method  = 'Post'
-  Uri     = 'https://slack.com/api/files.completeUploadExternal'
-  Headers = @{
-    Authorization  = $authHeader
-    'Content-Type' = 'application/json'
-  }
-  Body    = $completeJson
-}
-
 try {
-  $compResp = Invoke-RestMethod @params
+  $compResp = Invoke-RestMethod -Method Post `
+    -Uri 'https://slack.com/api/files.completeUploadExternal' `
+    -Headers @{ Authorization = "Bearer $token"; "Content-Type" = "application/json" } `
+    -Body $completeJson
   Write-Host '[DEBUG] completeUploadExternal response:'
   Write-Host (ConvertTo-Json $compResp -Depth 10)
   if (-not $compResp.ok) {
@@ -107,7 +106,7 @@ try {
     exit 1
   }
 } catch {
-  Write-Error "[ERROR] completeUploadExternal exception: $_"
+  Write-Error "[ERROR] completeUploadExternal exception: $($_.Exception.Message)"
   exit 1
 }
 
