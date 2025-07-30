@@ -1,8 +1,7 @@
-
 trigger: none
 
 pool:
-  name: Default  # Self-hosted agent
+  name: Default  # ← あなたの Self-hosted Agent 名に合わせて
 
 variables:
   - name: System.Debug
@@ -18,5 +17,8 @@ stages:
     - task: PowerShell@2
       displayName: 'Package and Notify via Slack'
       inputs:
-        targetType: 'filePath'
-        filePath: 'stage3-package/package_and_notify.ps1'
+        filePath: stage3-package/package_and_notify.ps1
+        failOnStderr: true
+      env:
+        SLACK_BOT_TOKEN: $(SLACK_BOT_TOKEN)
+        SLACK_USER_EMAIL: $(SLACK_USER_EMAIL)
