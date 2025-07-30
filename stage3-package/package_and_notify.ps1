@@ -6,7 +6,6 @@ Get-ChildItem Env:SLACK* | ForEach-Object { Write-Host "(DEBUG) $($_.Name) = $($
 
 $token = $env:SLACK_BOT_TOKEN
 $email = $env:SLACK_USER_EMAIL
-
 if (-not $token) { Write-Error '(ERROR) SLACK_BOT_TOKEN is null'; exit 1 }
 if (-not $email) { Write-Error '(ERROR) SLACK_USER_EMAIL is null'; exit 1 }
 Write-Host "(DEBUG) Slack token starts with: $($token.Substring(0,10))..."
@@ -21,24 +20,33 @@ Compress-Archive -Path $dummy -DestinationPath $zip -Force
 $size = (Get-Item $zip).Length
 Write-Host "(DEBUG) ZIP size: $size bytes"
 
-# === ユーザーIDの取得 ===
+# === ユーザーID取得 ===
 Write-Host '(INFO) Getting Slack user ID from email...'
-$userResp = Invoke-RestMethod -Method Get -Uri "https://slack.com/api/users.lookupByEmail?email=$($email)" -Headers @{ Authorization = "Bearer $token" }
+$userResp = Invoke-RestMethod -Method Get `
+  -Uri "https://slack.com/api/users.lookupByEmail?email=$($email)" `
+  -Headers @{ Authorization = "Bearer $token" }
 if (-not $userResp.ok) { Write-Error "(ERROR) users.lookupByEmail failed: $($userResp.error)"; exit 1 }
 $userId = $userResp.user.id
 Write-Host "(INFO) Slack user ID: $userId"
 
-# === DM チャンネル ID の取得 ===
+# === DM チャネル作成 ===
 Write-Host '(INFO) Opening DM channel...'
-$dmResp = Invoke-RestMethod -Method Post -Uri "https://slack.com/api/conversations.open" -Headers @{ Authorization = "Bearer $token"; "Content-Type" = "application/json" } -Body (@{ users = $userId } | ConvertTo-Json)
+$dmResp = Invoke-RestMethod -Method Post `
+  -Uri "https://slack.com/api/conversations.open" `
+  -Headers @{ Authorization = "Bearer $token"; "Content-Type" = "application/json" } `
+  -Body (@{ users = $userId } | ConvertTo-Json)
 if (-not $dmResp.ok) { Write-Error "(ERROR) conversations.open failed: $($dmResp.error)"; exit 1 }
 $channelId = $dmResp.channel.id
 Write-Host "(INFO) DM Channel ID: $channelId"
 
-# === Upload URL の取得 ===
+# === Upload URL 取得 ===
 $form = "filename=$([Uri]::EscapeDataString($($zip | Split-Path -Leaf)))&length=$size"
 Write-Host "(DEBUG) Form-body for getUploadURLExternal: $form"
-$resp = Invoke-RestMethod -Method Post -Uri "https://slack.com/api/files.getUploadURLExternal" -Headers @{ Authorization = "Bearer $token"; "Content-Type" = "application/x-www-form-urlencoded" } -Body $form
+$resp = Invoke-RestMethod -Method Post `
+  -Uri "https://slack.com/api/files.getUploadURLExternal" `
+  -Headers @{ Authorization = "Bearer $token"; "Content-Type" = "application/x-www-form-urlencoded" } `
+  -Body $form
+
 Write-Host "(DEBUG) Response from getUploadURLExternal:"
 Write-Host (ConvertTo-Json $resp -Depth 5)
 if (-not $resp.ok) { Write-Error "(ERROR) getUploadURLExternal failed: $($resp.error)"; exit 1 }
@@ -48,18 +56,35 @@ $fileId = $resp.file_id
 Write-Host "(INFO) Upload URL: $uploadUrl"
 Write-Host "(INFO) File ID: $fileId"
 
-# === アップロード（PUT） ===
+# === PUT アップロード ===
 Write-Host '(INFO) Uploading file via PUT...'
 Invoke-RestMethod -Method Put -Uri $uploadUrl -InFile $zip -ContentType "application/octet-stream"
 Write-Host '(INFO) File upload (PUT) completed'
 
-# === 完了通知（DM チャンネルに共有） ===
-$completeBody = @{ files = @(@{ id = $fileId; title = "vpn_package.zip" }); channel_id = $channelId; initial_comment = "VPN パッケージをこちらからダウンロードできます。" }
+# === ファイル完了通知と共有 ===
+$completeBody = @{
+  files           = @(@{ id = $fileId; title = "vpn_package.zip" })
+  channel_id      = $channelId
+  initial_comment = "VPN パッケージをこちらからダウンロードできます。"
+}
 $completeJson = $completeBody | ConvertTo-Json -Depth 5
+
 Write-Host '(DEBUG) completeUploadExternal payload:'
 Write-Host $completeJson
 
-$compResp = Invoke-RestMethod -Method Post -Uri "https://slack.com/api/files.completeUploadExternal" -Headers @{ Authorization = "Bearer $token"; "Content-Type" = "application/json" } -Body $completeJson
+# Splatting で安全に Invoke を実行
+$params = @{
+  Method      = 'Post'
+  Uri         = 'https://slack.com/api/files.completeUploadExternal'
+  Headers     = @{
+    Authorization  = "Bearer $token"
+    'Content-Type' = 'application/json'
+  }
+  Body        = $completeJson
+}
+
+$compResp = Invoke-RestMethod @params
+
 Write-Host '(DEBUG) completeUploadExternal response:'
 Write-Host (ConvertTo-Json $compResp -Depth 5)
 if (-not $compResp.ok) { Write-Error "(ERROR) completeUploadExternal failed: $($compResp.error)"; exit 1 }
