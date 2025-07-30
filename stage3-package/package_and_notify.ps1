@@ -72,15 +72,16 @@ $completeJson = $completeBody | ConvertTo-Json -Depth 5
 Write-Host '(DEBUG) completeUploadExternal payload:'
 Write-Host $completeJson
 
-# Splatting で安全に Invoke を実行
+# ヘッダー値を事前に構成（文字列展開による構文エラー回避）
+$authHeader = "Bearer $token"
 $params = @{
-  Method      = 'Post'
-  Uri         = 'https://slack.com/api/files.completeUploadExternal'
-  Headers     = @{
-    Authorization  = "Bearer $token"
+  Method  = 'Post'
+  Uri     = 'https://slack.com/api/files.completeUploadExternal'
+  Headers = @{
+    Authorization  = $authHeader
     'Content-Type' = 'application/json'
   }
-  Body        = $completeJson
+  Body    = $completeJson
 }
 
 $compResp = Invoke-RestMethod @params
