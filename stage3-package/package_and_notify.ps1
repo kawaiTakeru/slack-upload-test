@@ -94,7 +94,7 @@ if (-not $compResp.ok) {
     exit 1
 }
 
-# === DM メッセージ送信（permalink使用） ===
+# === Permalink 取得と通知（1: 通常通知）
 $permalink = $compResp.files[0].permalink
 Write-Host "[INFO] Slack File Permalink: $permalink"
 
@@ -116,4 +116,23 @@ if (-not $msgResp.ok) {
     exit 1
 }
 
-Write-Host "[SUCCESS] Upload and DM notification completed with permalink!"
+# === Permalink 明示共有（2: リンク単体投稿で共有確定させる）
+$linkOnlyBody = @{
+  channel = $channelId
+  text    = "<$permalink>"
+} | ConvertTo-Json -Depth 3
+
+$linkOnlyResp = Invoke-RestMethod -Method Post `
+  -Uri "https://slack.com/api/chat.postMessage" `
+  -Headers @{ Authorization = "Bearer $token"; "Content-Type" = "application/json" } `
+  -Body $linkOnlyBody
+
+Write-Host "[DEBUG] chat.postMessage (link-only) response:"
+Write-Host (ConvertTo-Json $linkOnlyResp -Depth 5)
+
+if (-not $linkOnlyResp.ok) {
+    Write-Error "[ERROR] chat.postMessage (link-only) failed: $($linkOnlyResp.error)"
+    exit 1
+}
+
+Write-Host "[SUCCESS] Upload and DM notification completed with shared file link!"
