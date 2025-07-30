@@ -1,4 +1,3 @@
-
 $ErrorActionPreference = "Stop"
 
 Write-Host "[DEBUG] Available SLACK env vars:"
