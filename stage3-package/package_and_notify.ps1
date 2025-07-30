@@ -66,12 +66,12 @@ $fileId = $resp.file_id
 Write-Host "[INFO] Upload URL: $uploadUrl"
 Write-Host "[INFO] File ID: $fileId"
 
-# === アップロード（PUT）
+# === アップロード（PUT） ===
 Write-Host "[INFO] Uploading file via PUT..."
 Invoke-RestMethod -Method Put -Uri $uploadUrl -InFile $zip -ContentType "application/octet-stream"
 Write-Host "[INFO] File upload (PUT) completed"
 
-# === 完了通知
+# === 完了通知 ===
 $completeBody = @{
   files           = @(@{ id = $fileId })
   channel_id      = $channelId
@@ -94,14 +94,14 @@ if (-not $compResp.ok) {
     exit 1
 }
 
-# === DM メッセージ送信（permalink使用） ===
-$permalink = $compResp.files[0].permalink
-Write-Host "[INFO] Slack File Permalink: $permalink"
-
+# ✅ DM メッセージ送信（file ID添付で共有を確定させる）
 $msgBody = @{
-  channel = $channelId
-  text    = "VPN ZIP uploaded. Download: $permalink"
-} | ConvertTo-Json -Depth 3
+  channel   = $channelId
+  text      = "VPN ZIP is ready. See attached file."
+  attachments = @()
+  as_user   = $true
+  file_ids  = @($fileId)
+} | ConvertTo-Json -Depth 5
 
 $msgResp = Invoke-RestMethod -Method Post `
   -Uri "https://slack.com/api/chat.postMessage" `
@@ -116,4 +116,4 @@ if (-not $msgResp.ok) {
     exit 1
 }
 
-Write-Host "[SUCCESS] Upload and DM notification completed with permalink!"
+Write-Host "[✅ SUCCESS] Upload and full file-sharing completed via DM!"
