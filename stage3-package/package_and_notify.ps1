@@ -5,6 +5,11 @@ $slackToken = $env:SLACK_BOT_TOKEN
 $slackUserEmail = $env:SLACK_USER_EMAIL
 
 # === TOKEN DEBUG CHECK ===
+Write-Host "[DEBUG] Available environment variables:"
+Get-ChildItem Env: | Where-Object { $_.Name -like "SLACK*" } | ForEach-Object {
+    Write-Host "[DEBUG] $($_.Name) = $($_.Value)"
+}
+
 if ([string]::IsNullOrEmpty($slackToken)) {
     Write-Error "[ERROR] SLACK_BOT_TOKEN is null in script"
     exit 1
