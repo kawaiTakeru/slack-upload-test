@@ -33,7 +33,7 @@ if (-not $userResp.ok) { Write-Error "[ERROR] users.lookupByEmail failed: $($use
 $userId = $userResp.user.id
 Write-Host "[INFO] Slack user ID: $userId"
 
-# === DMチャンネルIDの取得（またはチャンネルIDを手動設定する場合はこの処理をスキップして $channelId = "Cxxx" を直接指定）===
+# === DMチャンネルIDの取得 ===
 Write-Host "[INFO] Opening DM channel..."
 $dmResp = Invoke-RestMethod -Method Post `
   -Uri "https://slack.com/api/conversations.open" `
@@ -66,12 +66,12 @@ $fileId = $resp.file_id
 Write-Host "[INFO] Upload URL: $uploadUrl"
 Write-Host "[INFO] File ID: $fileId"
 
-# === アップロード（PUT）===
+# === アップロード（PUT）
 Write-Host "[INFO] Uploading file via PUT..."
 Invoke-RestMethod -Method Put -Uri $uploadUrl -InFile $zip -ContentType "application/octet-stream"
 Write-Host "[INFO] File upload (PUT) completed"
 
-# === 完了通知（completeUploadExternal）===
+# === 完了通知
 $completeBody = @{
   files           = @(@{ id = $fileId })
   channel_id      = $channelId
@@ -94,11 +94,10 @@ if (-not $compResp.ok) {
     exit 1
 }
 
-# === Permalink を取得し 2段階で通知 ===
+# === DM メッセージ送信（permalink使用） ===
 $permalink = $compResp.files[0].permalink
 Write-Host "[INFO] Slack File Permalink: $permalink"
 
-# 1. 通常の説明付き通知
 $msgBody = @{
   channel = $channelId
   text    = "VPN ZIP uploaded. Download: $permalink"
@@ -117,23 +116,4 @@ if (-not $msgResp.ok) {
     exit 1
 }
 
-# 2. 明示的なリンク通知（リンクだけ投稿）
-$linkOnlyBody = @{
-  channel = $channelId
-  text    = "<$permalink>"
-} | ConvertTo-Json -Depth 3
-
-$linkOnlyResp = Invoke-RestMethod -Method Post `
-  -Uri "https://slack.com/api/chat.postMessage" `
-  -Headers @{ Authorization = "Bearer $token"; "Content-Type" = "application/json" } `
-  -Body $linkOnlyBody
-
-Write-Host "[DEBUG] chat.postMessage (link-only) response:"
-Write-Host (ConvertTo-Json $linkOnlyResp -Depth 5)
-
-if (-not $linkOnlyResp.ok) {
-    Write-Error "[ERROR] chat.postMessage (link-only) failed: $($linkOnlyResp.error)"
-    exit 1
-}
-
-Write-Host "[SUCCESS] Upload and forced sharing completed successfully!"
+Write-Host "[SUCCESS] Upload and DM notification completed with permalink!"
