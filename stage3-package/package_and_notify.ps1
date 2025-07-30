@@ -4,11 +4,11 @@ $ErrorActionPreference = "Stop"
 Write-Host "[DEBUG] SLACK env vars:"
 Get-ChildItem Env:SLACK* | ForEach-Object { Write-Host "[DEBUG] $($_.Name) = $($_.Value)" }
 
-$token  = $env:SLACK_BOT_TOKEN
-$email  = $env:SLACK_USER_EMAIL
+$token = $env:SLACK_BOT_TOKEN
+$email = $env:SLACK_USER_EMAIL
 
-if (-not $token)  { Write-Error "[ERROR] SLACK_BOT_TOKEN is null";  exit 1 }
-if (-not $email)  { Write-Error "[ERROR] SLACK_USER_EMAIL is null"; exit 1 }
+if (-not $token) { Write-Error "[ERROR] SLACK_BOT_TOKEN is null"; exit 1 }
+if (-not $email) { Write-Error "[ERROR] SLACK_USER_EMAIL is null"; exit 1 }
 Write-Host "[DEBUG] Slack token starts with: $($token.Substring(0,10))..."
 Write-Host "[DEBUG] Slack user email: $email"
 
@@ -23,7 +23,7 @@ Compress-Archive -Path $dummy -DestinationPath $zip -Force
 $size = (Get-Item $zip).Length
 Write-Host "[DEBUG] ZIP size: $size bytes"
 
-# === ユーザーID取得 ===
+# === ユーザーIDの取得 ===
 Write-Host "[INFO] Getting Slack user ID from email..."
 $userResp = Invoke-RestMethod -Method Get `
   -Uri "https://slack.com/api/users.lookupByEmail?email=$($email)" `
@@ -33,7 +33,7 @@ if (-not $userResp.ok) { Write-Error "[ERROR] users.lookupByEmail failed: $($use
 $userId = $userResp.user.id
 Write-Host "[INFO] Slack user ID: $userId"
 
-# === DMチャンネルID取得 ===
+# === DMチャンネルIDの取得 ===
 Write-Host "[INFO] Opening DM channel..."
 $dmResp = Invoke-RestMethod -Method Post `
   -Uri "https://slack.com/api/conversations.open" `
@@ -44,7 +44,7 @@ if (-not $dmResp.ok) { Write-Error "[ERROR] conversations.open failed: $($dmResp
 $channelId = $dmResp.channel.id
 Write-Host "[INFO] DM Channel ID: $channelId"
 
-# === Upload URL取得 ===
+# === Upload URLの取得 ===
 $form = "filename=$([Uri]::EscapeDataString([IO.Path]::GetFileName($zip)))&length=$size"
 Write-Host "[DEBUG] Form-body for getUploadURLExternal: $form"
 
@@ -62,16 +62,16 @@ if (-not $resp.ok) {
 }
 
 $uploadUrl = $resp.upload_url
-$fileId    = $resp.file_id
+$fileId = $resp.file_id
 Write-Host "[INFO] Upload URL: $uploadUrl"
 Write-Host "[INFO] File ID: $fileId"
 
-# === PUTでアップロード ===
+# === アップロード（PUT）
 Write-Host "[INFO] Uploading file via PUT..."
 Invoke-RestMethod -Method Put -Uri $uploadUrl -InFile $zip -ContentType "application/octet-stream"
 Write-Host "[INFO] File upload (PUT) completed"
 
-# === completeUploadExternalで登録 ===
+# === 完了通知
 $completeBody = @{
   files           = @(@{ id = $fileId })
   channel_id      = $channelId
@@ -94,27 +94,13 @@ if (-not $compResp.ok) {
     exit 1
 }
 
-# === ✅ files.sharedPublicURL でファイルを公開する ===
-$shareResp = Invoke-RestMethod -Method Post `
-  -Uri "https://slack.com/api/files.sharedPublicURL" `
-  -Headers @{ Authorization = "Bearer $token" } `
-  -Body @{ file = $fileId }
-
-Write-Host "[DEBUG] files.sharedPublicURL response:"
-Write-Host (ConvertTo-Json $shareResp -Depth 5)
-
-if (-not $shareResp.ok) {
-    Write-Error "[ERROR] files.sharedPublicURL failed: $($shareResp.error)"
-    exit 1
-}
-
-# === ✅ 公開パーマリンクでメッセージ送信 ===
-$publicLink = $shareResp.file.permalink_public
-Write-Host "[INFO] Shared Public Link: $publicLink"
+# === DM メッセージ送信（permalink使用） ===
+$permalink = $compResp.files[0].permalink
+Write-Host "[INFO] Slack File Permalink: $permalink"
 
 $msgBody = @{
   channel = $channelId
-  text    = "VPN ZIP is ready. Download here: $publicLink"
+  text    = "VPN ZIP uploaded. Download: $permalink"
 } | ConvertTo-Json -Depth 3
 
 $msgResp = Invoke-RestMethod -Method Post `
@@ -130,4 +116,4 @@ if (-not $msgResp.ok) {
     exit 1
 }
 
-Write-Host "[✅ SUCCESS] Upload complete & public download link sent via DM!"
+Write-Host "[SUCCESS] Upload and DM notification completed with permalink!"
