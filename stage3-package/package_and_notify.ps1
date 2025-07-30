@@ -3,6 +3,15 @@ $ErrorActionPreference = "Stop"
 # Environment variables
 $slackToken = $env:SLACK_BOT_TOKEN
 $slackUserEmail = $env:SLACK_USER_EMAIL
+
+# === TOKEN DEBUG CHECK ===
+if ([string]::IsNullOrEmpty($slackToken)) {
+    Write-Error "[ERROR] SLACK_BOT_TOKEN is null in script"
+    exit 1
+} else {
+    Write-Host "[DEBUG] SLACK_BOT_TOKEN starts with: $($slackToken.Substring(0, 10))..."
+}
+
 $workingDir = "$env:BUILD_SOURCESDIRECTORY\stage3-package"
 $dummyFilePath = "$workingDir\dummy.txt"
 $zipFilePath = "$workingDir\vpn_package.zip"
