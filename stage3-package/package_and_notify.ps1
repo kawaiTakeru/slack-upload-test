@@ -7,8 +7,8 @@ Get-ChildItem Env:SLACK* | ForEach-Object { Write-Host "[DEBUG] $($_.Name) = $($
 $token = $env:SLACK_BOT_TOKEN
 $email = $env:SLACK_USER_EMAIL
 
-if (-not $token) { Write-Error "SLACK_BOT_TOKEN is null"; exit 1 }
-if (-not $email) { Write-Error "SLACK_USER_EMAIL is null"; exit 1 }
+if (-not $token) { Write-Error "[ERROR] SLACK_BOT_TOKEN is null"; exit 1 }
+if (-not $email) { Write-Error "[ERROR] SLACK_USER_EMAIL is null"; exit 1 }
 Write-Host "[DEBUG] Slack token starts with: $($token.Substring(0,10))..."
 Write-Host "[DEBUG] Slack user email: $email"
 
@@ -24,26 +24,25 @@ $size = (Get-Item $zip).Length
 Write-Host "[DEBUG] ZIP size: $size bytes"
 
 # === ユーザーIDの取得 ===
-$userResp = Invoke-RestMethod -Uri "https://slack.com/api/users.lookupByEmail" `
-  -Headers @{ Authorization = "Bearer $token" } `
-  -Method Get `
-  -Body @{ email = $email }
+Write-Host "[INFO] Getting Slack user ID from email..."
+$userResp = Invoke-RestMethod -Method Get `
+  -Uri "https://slack.com/api/users.lookupByEmail?email=$($email)" `
+  -Headers @{ Authorization = "Bearer $token" }
 
-if (-not $userResp.ok) { Write-Error "users.lookupByEmail failed: $($userResp.error)"; exit 1 }
-
+if (-not $userResp.ok) { Write-Error "[ERROR] users.lookupByEmail failed: $($userResp.error)"; exit 1 }
 $userId = $userResp.user.id
 Write-Host "[INFO] Slack user ID: $userId"
 
 # === DMチャンネルIDの取得 ===
-$chanResp = Invoke-RestMethod -Uri "https://slack.com/api/conversations.open" `
+Write-Host "[INFO] Opening DM channel..."
+$dmResp = Invoke-RestMethod -Method Post `
+  -Uri "https://slack.com/api/conversations.open" `
   -Headers @{ Authorization = "Bearer $token"; "Content-Type" = "application/json" } `
-  -Method Post `
   -Body (@{ users = $userId } | ConvertTo-Json)
 
-if (-not $chanResp.ok) { Write-Error "conversations.open failed: $($chanResp.error)"; exit 1 }
-
-$channel_id = $chanResp.channel.id
-Write-Host "[INFO] DM channel ID: $channel_id"
+if (-not $dmResp.ok) { Write-Error "[ERROR] conversations.open failed: $($dmResp.error)"; exit 1 }
+$channelId = $dmResp.channel.id
+Write-Host "[INFO] DM Channel ID: $channelId"
 
 # === Upload URLの取得 ===
 $form = "filename=$([Uri]::EscapeDataString([IO.Path]::GetFileName($zip)))&length=$size"
@@ -58,7 +57,7 @@ Write-Host "[DEBUG] Response from getUploadURLExternal:"
 Write-Host (ConvertTo-Json $resp -Depth 5)
 
 if (-not $resp.ok) {
-    Write-Error "getUploadURLExternal failed: $($resp.error)"
+    Write-Error "[ERROR] getUploadURLExternal failed: $($resp.error)"
     exit 1
 }
 
@@ -68,13 +67,14 @@ Write-Host "[INFO] Upload URL: $uploadUrl"
 Write-Host "[INFO] File ID: $fileId"
 
 # === アップロード（PUT）
+Write-Host "[INFO] Uploading file via PUT..."
 Invoke-RestMethod -Method Put -Uri $uploadUrl -InFile $zip -ContentType "application/octet-stream"
 Write-Host "[INFO] File upload (PUT) completed"
 
-# === 完了通知
+# === 完了通知 ===
 $completeBody = @{
   files           = @(@{ id = $fileId })
-  channel_id      = $channel_id
+  channel_id      = $channelId
   initial_comment = "VPN ZIP uploaded"
 }
 $completeJson = $completeBody | ConvertTo-Json -Depth 5
@@ -90,7 +90,7 @@ Write-Host "[DEBUG] completeUploadExternal response:"
 Write-Host (ConvertTo-Json $compResp -Depth 5)
 
 if (-not $compResp.ok) {
-    Write-Error "completeUploadExternal failed: $($compResp.error)"
+    Write-Error "[ERROR] completeUploadExternal failed: $($compResp.error)"
     exit 1
 }
 
