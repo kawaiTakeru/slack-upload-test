@@ -96,14 +96,13 @@ if (-not $compResp.ok) {
 
 # === DM テストメッセージ送信（URL付き） ===
 $downloadUrl = $compResp.files[0].url_private_download
-$permalink   = $compResp.files[0].permalink
 Write-Host "[INFO] File Download URL: $downloadUrl"
-Write-Host "[INFO] File Permalink: $permalink"
 
-Write-Host "[INFO] Sending test message to DM..."
+$msgText = "VPN ZIP uploaded. Download: $downloadUrl"
+
 $msgBody = @{
   channel = $channelId
-  text    = "✅ VPN ZIP has been uploaded.\n📎 Download link: $downloadUrl"
+  text    = $msgText
 } | ConvertTo-Json -Depth 3
 
 $msgResp = Invoke-RestMethod -Method Post `
@@ -119,4 +118,4 @@ if (-not $msgResp.ok) {
     exit 1
 }
 
-Write-Host "[✅ SUCCESS] Upload and DM notification with download link completed!"
+Write-Host "[SUCCESS] Upload and DM notification completed."
