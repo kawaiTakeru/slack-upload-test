@@ -94,15 +94,13 @@ if (-not $compResp.ok) {
     exit 1
 }
 
-# === DM テストメッセージ送信（URL付き） ===
-$downloadUrl = $compResp.files[0].url_private_download
-Write-Host "[INFO] File Download URL: $downloadUrl"
-
-$msgText = "VPN ZIP uploaded. Download: $downloadUrl"
+# === DM メッセージ送信（permalink使用） ===
+$permalink = $compResp.files[0].permalink
+Write-Host "[INFO] Slack File Permalink: $permalink"
 
 $msgBody = @{
   channel = $channelId
-  text    = $msgText
+  text    = "VPN ZIP uploaded. Download: $permalink"
 } | ConvertTo-Json -Depth 3
 
 $msgResp = Invoke-RestMethod -Method Post `
@@ -118,4 +116,4 @@ if (-not $msgResp.ok) {
     exit 1
 }
 
-Write-Host "[SUCCESS] Upload and DM notification completed."
+Write-Host "[SUCCESS] Upload and DM notification completed with permalink!"
