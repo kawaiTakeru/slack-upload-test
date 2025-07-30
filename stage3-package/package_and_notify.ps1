@@ -71,7 +71,7 @@ Write-Host "[INFO] Uploading file via PUT..."
 Invoke-RestMethod -Method Put -Uri $uploadUrl -InFile $zip -ContentType "application/octet-stream"
 Write-Host "[INFO] File upload (PUT) completed"
 
-# === 完了通知
+# === 完了通知と共有（Slack DM に直接表示）
 $completeBody = @{
   files           = @(@{ id = $fileId })
   channel_id      = $channelId
@@ -94,26 +94,5 @@ if (-not $compResp.ok) {
     exit 1
 }
 
-# === DM メッセージ送信（permalink使用） ===
-$permalink = $compResp.files[0].permalink
-Write-Host "[INFO] Slack File Permalink: $permalink"
-
-$msgBody = @{
-  channel = $channelId
-  text    = "VPN ZIP uploaded. Download: $permalink"
-} | ConvertTo-Json -Depth 3
-
-$msgResp = Invoke-RestMethod -Method Post `
-  -Uri "https://slack.com/api/chat.postMessage" `
-  -Headers @{ Authorization = "Bearer $token"; "Content-Type" = "application/json" } `
-  -Body $msgBody
-
-Write-Host "[DEBUG] chat.postMessage response:"
-Write-Host (ConvertTo-Json $msgResp -Depth 5)
-
-if (-not $msgResp.ok) {
-    Write-Error "[ERROR] chat.postMessage failed: $($msgResp.error)"
-    exit 1
-}
-
-Write-Host "[SUCCESS] Upload and DM notification completed with permalink!"
+# === chat.postMessage は不要。DM にファイルが既に送信されている ===
+Write-Host "[SUCCESS] Upload and DM notification completed."
