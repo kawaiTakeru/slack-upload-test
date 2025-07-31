@@ -12,20 +12,25 @@ if (-not $email) { Write-Error "[ERROR] SLACK_USER_EMAIL is null"; exit 1 }
 Write-Host "[DEBUG] Slack token starts with: $($token.Substring(0,10))..."
 Write-Host "[DEBUG] Slack user email: $email"
 
-# === ファイル準備 ===
-$dummy = Join-Path $PSScriptRoot "dummy.txt"
-Set-Content -Path $dummy -Value "dummy"
+# === ダミーファイルを複数生成してZIPに含める（より確実に中身ありとする）
+$dummyFiles = @()
+for ($i = 1; $i -le 3; $i++) {
+    $f = Join-Path $PSScriptRoot "dummy$i.txt"
+    Set-Content -Path $f -Value "dummy content $i"
+    $dummyFiles += $f
+}
 
 $zip = Join-Path $PSScriptRoot "vpn_package.zip"
 if (Test-Path $zip) { Remove-Item $zip -Force }
-Compress-Archive -Path $dummy -DestinationPath $zip -Force
+Compress-Archive -Path $dummyFiles -DestinationPath $zip -Force
 
 $size = (Get-Item $zip).Length
 Write-Host "[DEBUG] ZIP size: $size bytes"
 
-# === 圧縮ファイルの中身確認 ===
 Write-Host "[DEBUG] Included files in ZIP:"
-Write-Host (Get-Content $dummy)
+$dummyFiles | ForEach-Object { Write-Host " - $_ = $(Get-Content $_)" }
+
+Write-Host "[DEBUG] ZIP MD5: $(Get-FileHash -Algorithm MD5 $zip).Hash"
 
 # === ユーザーIDの取得 ===
 Write-Host "[INFO] Getting Slack user ID from email..."
@@ -70,23 +75,15 @@ $fileId = $resp.file_id
 Write-Host "[INFO] Upload URL: $uploadUrl"
 Write-Host "[INFO] File ID: $fileId"
 
-# === アップロード（PUT or POST） ===
+# === アップロード（PUT） ===
 Write-Host "[INFO] Uploading file via PUT..."
-
-# ---- PUT方式（ステータス確認用） ----
 $response = Invoke-WebRequest -Method Put `
   -Uri $uploadUrl `
   -InFile $zip `
   -ContentType "application/octet-stream" `
   -UseBasicParsing
 Write-Host "[DEBUG] PUT Upload StatusCode: $($response.StatusCode)"
-
-# ---- 代替 POST方式を試すならこちらを使用（コメント解除） ----
-# $response = Invoke-RestMethod -Method Post `
-#   -Uri $uploadUrl `
-#   -Headers @{ "Content-Type" = "application/octet-stream" } `
-#   -InFile $zip
-# Write-Host "[DEBUG] POST Upload StatusCode: $($response.StatusCode)"
+$response.Headers.GetEnumerator() | ForEach-Object { Write-Host "[DEBUG] Header] $($_.Name): $($_.Value)" }
 
 Write-Host "[INFO] File upload completed"
 
@@ -112,8 +109,8 @@ $compResp = Invoke-RestMethod -Method Post `
   -Headers @{ Authorization = "Bearer $token"; "Content-Type" = "application/json" } `
   -Body $completeJson
 
-Write-Host "[DEBUG] completeUploadExternal response:"
-Write-Host (ConvertTo-Json $compResp -Depth 5)
+Write-Host "[DEBUG] completeUploadExternal full response:"
+Write-Host (ConvertTo-Json $compResp -Depth 10)
 
 if (-not $compResp.ok) {
     Write-Error "[ERROR] completeUploadExternal failed: $($compResp.error)"
