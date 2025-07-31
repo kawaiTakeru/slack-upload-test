@@ -71,7 +71,7 @@ Write-Host "[INFO] Uploading file via PUT..."
 Invoke-RestMethod -Method Put -Uri $uploadUrl -InFile $zip -ContentType "application/octet-stream"
 Write-Host "[INFO] File upload (PUT) completed"
 
-# === 完了通知
+# === 完了通知（ファイル登録）
 $completeBody = @{
   files           = @(@{ id = $fileId })
   channel_id      = $channelId
@@ -94,13 +94,11 @@ if (-not $compResp.ok) {
     exit 1
 }
 
-# === DM メッセージ送信（permalink使用） ===
-$permalink = $compResp.files[0].permalink
-Write-Host "[INFO] Slack File Permalink: $permalink"
-
+# === ✅ DM にファイルを「添付付き」で投稿（共有の確定）
 $msgBody = @{
-  channel = $channelId
-  text    = "VPN ZIP uploaded. Download: $permalink"
+  channel  = $channelId
+  text     = "VPN ZIP is ready. See attached file."
+  file_ids = @($fileId)
 } | ConvertTo-Json -Depth 3
 
 $msgResp = Invoke-RestMethod -Method Post `
@@ -116,4 +114,4 @@ if (-not $msgResp.ok) {
     exit 1
 }
 
-Write-Host "[SUCCESS] Upload and DM notification completed with permalink!"
+Write-Host "[✅ SUCCESS] Upload complete and file sent with attachment!"
