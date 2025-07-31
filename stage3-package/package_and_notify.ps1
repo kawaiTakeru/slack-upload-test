@@ -71,8 +71,8 @@ $completeJson = @"
   "files": [
     {
       "id": "$fileId",
-      "title": "vpn_package.zip"
-      "mimetype": "application/zip"
+      "title": "vpn_package.zip",
+      "mimetype": "application/zip",
     }
   ],
   "channel_id": "$channelId",
