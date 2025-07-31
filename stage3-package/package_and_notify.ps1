@@ -66,12 +66,12 @@ $fileId = $resp.file_id
 Write-Host "[INFO] Upload URL: $uploadUrl"
 Write-Host "[INFO] File ID: $fileId"
 
-# === アップロード（PUT）
+# === アップロード（PUT） ===
 Write-Host "[INFO] Uploading file via PUT..."
 Invoke-RestMethod -Method Put -Uri $uploadUrl -InFile $zip -ContentType "application/octet-stream"
 Write-Host "[INFO] File upload (PUT) completed"
 
-# === 完了通知（ファイル登録）
+# === 完了通知 ===
 $completeBody = @{
   files           = @(@{ id = $fileId })
   channel_id      = $channelId
@@ -94,24 +94,43 @@ if (-not $compResp.ok) {
     exit 1
 }
 
-# === ✅ DM にファイルを「添付付き」で投稿（共有の確定）
-$msgBody = @{
+# === 1. permalink付きメッセージ（参考情報として）
+$permalink = $compResp.files[0].permalink
+Write-Host "[INFO] Slack File Permalink: $permalink"
+
+$msgBody1 = @{
+  channel = $channelId
+  text    = "VPN ZIP uploaded. Download: $permalink"
+} | ConvertTo-Json -Depth 3
+
+$msgResp1 = Invoke-RestMethod -Method Post `
+  -Uri "https://slack.com/api/chat.postMessage" `
+  -Headers @{ Authorization = "Bearer $token"; "Content-Type" = "application/json" } `
+  -Body $msgBody1
+
+if (-not $msgResp1.ok) {
+    Write-Error "[ERROR] permalink chat.postMessage failed: $($msgResp1.error)"
+    exit 1
+}
+
+# === 2. ファイル添付による共有（Slackでダウンロード可能にする）
+$msgBody2 = @{
   channel  = $channelId
   text     = "VPN ZIP is ready. See attached file."
   file_ids = @($fileId)
 } | ConvertTo-Json -Depth 3
 
-$msgResp = Invoke-RestMethod -Method Post `
+$msgResp2 = Invoke-RestMethod -Method Post `
   -Uri "https://slack.com/api/chat.postMessage" `
   -Headers @{ Authorization = "Bearer $token"; "Content-Type" = "application/json" } `
-  -Body $msgBody
+  -Body $msgBody2
 
-Write-Host "[DEBUG] chat.postMessage response:"
-Write-Host (ConvertTo-Json $msgResp -Depth 5)
+Write-Host "[DEBUG] chat.postMessage response with file_ids:"
+Write-Host (ConvertTo-Json $msgResp2 -Depth 5)
 
-if (-not $msgResp.ok) {
-    Write-Error "[ERROR] chat.postMessage failed: $($msgResp.error)"
+if (-not $msgResp2.ok) {
+    Write-Error "[ERROR] chat.postMessage (file_ids) failed: $($msgResp2.error)"
     exit 1
 }
 
-Write-Host "[✅ SUCCESS] Upload complete and file sent with attachment!"
+Write-Host "[✅ SUCCESS] Upload and full file-shared message sent via DM!"
