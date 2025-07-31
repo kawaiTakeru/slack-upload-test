@@ -5,14 +5,13 @@ Write-Host "[DEBUG] SLACK env vars:"
 Get-ChildItem Env:SLACK* | ForEach-Object { Write-Host "[DEBUG] $($_.Name) = $($_.Value)" }
 
 $token = $env:SLACK_BOT_TOKEN
-$email = $env:SLACK_USER_EMAIL
+$channelId = "C097YJV3UH2"  # ← 投稿先チャンネルIDを直接指定
 
 if (-not $token) { Write-Error "[ERROR] SLACK_BOT_TOKEN is null"; exit 1 }
-if (-not $email) { Write-Error "[ERROR] SLACK_USER_EMAIL is null"; exit 1 }
 Write-Host "[DEBUG] Slack token starts with: $($token.Substring(0,10))..."
-Write-Host "[DEBUG] Slack user email: $email"
+Write-Host "[DEBUG] Slack channel ID: $channelId"
 
-# === ダミーファイルを複数生成してZIPに含める（より確実に中身ありとする）
+# === ダミーファイルを複数生成してZIPに含める
 $dummyFiles = @()
 for ($i = 1; $i -le 3; $i++) {
     $f = Join-Path $PSScriptRoot "dummy$i.txt"
@@ -31,27 +30,6 @@ Write-Host "[DEBUG] Included files in ZIP:"
 $dummyFiles | ForEach-Object { Write-Host " - $_ = $(Get-Content $_)" }
 
 Write-Host "[DEBUG] ZIP MD5: $(Get-FileHash -Algorithm MD5 $zip).Hash"
-
-# === ユーザーIDの取得 ===
-Write-Host "[INFO] Getting Slack user ID from email..."
-$userResp = Invoke-RestMethod -Method Get `
-  -Uri "https://slack.com/api/users.lookupByEmail?email=$($email)" `
-  -Headers @{ Authorization = "Bearer $token" }
-
-if (-not $userResp.ok) { Write-Error "[ERROR] users.lookupByEmail failed: $($userResp.error)"; exit 1 }
-$userId = $userResp.user.id
-Write-Host "[INFO] Slack user ID: $userId"
-
-# === DMチャンネルIDの取得 ===
-Write-Host "[INFO] Opening DM channel..."
-$dmResp = Invoke-RestMethod -Method Post `
-  -Uri "https://slack.com/api/conversations.open" `
-  -Headers @{ Authorization = "Bearer $token"; "Content-Type" = "application/json" } `
-  -Body (@{ users = $userId } | ConvertTo-Json)
-
-if (-not $dmResp.ok) { Write-Error "[ERROR] conversations.open failed: $($dmResp.error)"; exit 1 }
-$channelId = $dmResp.channel.id
-Write-Host "[INFO] DM Channel ID: $channelId"
 
 # === Upload URLの取得 ===
 $form = "filename=$([Uri]::EscapeDataString([IO.Path]::GetFileName($zip)))&length=$size"
@@ -75,7 +53,7 @@ $fileId = $resp.file_id
 Write-Host "[INFO] Upload URL: $uploadUrl"
 Write-Host "[INFO] File ID: $fileId"
 
-# === アップロード（PUT, application/zip） ===
+# === アップロード（PUT）
 Write-Host "[INFO] Uploading file via PUT..."
 $response = Invoke-WebRequest -Method Put `
   -Uri $uploadUrl `
@@ -87,7 +65,7 @@ $response.Headers.GetEnumerator() | ForEach-Object { Write-Host "[DEBUG] Header]
 
 Write-Host "[INFO] File upload completed"
 
-# === 完了通知（手書き JSON）
+# === 完了通知
 $completeJson = @"
 {
   "files": [
@@ -117,7 +95,7 @@ if (-not $compResp.ok) {
     exit 1
 }
 
-# === 1. permalink付きメッセージ
+# === 1. URL付きメッセージ送信
 $permalink = $compResp.files[0].permalink
 Write-Host "[INFO] Slack File Permalink: $permalink"
 
@@ -136,7 +114,7 @@ if (-not $msgResp1.ok) {
     exit 1
 }
 
-# === 2. ファイル添付共有
+# === 2. 添付ファイル付きメッセージ送信
 $msgBody2 = @{
   channel  = $channelId
   text     = "VPN ZIP is ready. See attached file."
@@ -156,4 +134,4 @@ if (-not $msgResp2.ok) {
     exit 1
 }
 
-Write-Host "[✅ SUCCESS] Upload and full file-shared message sent via DM!"
+Write-Host "[✅ SUCCESS] Upload and full file-shared message sent to channel!"
