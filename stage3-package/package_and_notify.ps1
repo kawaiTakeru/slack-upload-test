@@ -23,6 +23,10 @@ Compress-Archive -Path $dummy -DestinationPath $zip -Force
 $size = (Get-Item $zip).Length
 Write-Host "[DEBUG] ZIP size: $size bytes"
 
+# === 圧縮ファイルの中身確認 ===
+Write-Host "[DEBUG] Included files in ZIP:"
+Write-Host (Get-Content $dummy)
+
 # === ユーザーIDの取得 ===
 Write-Host "[INFO] Getting Slack user ID from email..."
 $userResp = Invoke-RestMethod -Method Get `
@@ -66,10 +70,25 @@ $fileId = $resp.file_id
 Write-Host "[INFO] Upload URL: $uploadUrl"
 Write-Host "[INFO] File ID: $fileId"
 
-# === アップロード（PUT） ===
+# === アップロード（PUT or POST） ===
 Write-Host "[INFO] Uploading file via PUT..."
-Invoke-RestMethod -Method Put -Uri $uploadUrl -InFile $zip -ContentType "application/octet-stream"
-Write-Host "[INFO] File upload (PUT) completed"
+
+# ---- PUT方式（ステータス確認用） ----
+$response = Invoke-WebRequest -Method Put `
+  -Uri $uploadUrl `
+  -InFile $zip `
+  -ContentType "application/octet-stream" `
+  -UseBasicParsing
+Write-Host "[DEBUG] PUT Upload StatusCode: $($response.StatusCode)"
+
+# ---- 代替 POST方式を試すならこちらを使用（コメント解除） ----
+# $response = Invoke-RestMethod -Method Post `
+#   -Uri $uploadUrl `
+#   -Headers @{ "Content-Type" = "application/octet-stream" } `
+#   -InFile $zip
+# Write-Host "[DEBUG] POST Upload StatusCode: $($response.StatusCode)"
+
+Write-Host "[INFO] File upload completed"
 
 # === 完了通知（手書き JSON）
 $completeJson = @"
