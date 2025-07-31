@@ -1,4 +1,3 @@
-
 $ErrorActionPreference = "Stop"
 
 # === 環境変数の確認 ===
