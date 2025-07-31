@@ -71,13 +71,20 @@ Write-Host "[INFO] Uploading file via PUT..."
 Invoke-RestMethod -Method Put -Uri $uploadUrl -InFile $zip -ContentType "application/octet-stream"
 Write-Host "[INFO] File upload (PUT) completed"
 
-# === 完了通知 ===
-$completeBody = @{
-  files           = @(@{ id = $fileId })
-  channel_id      = $channelId
-  initial_comment = "VPN ZIP uploaded"
+# === 完了通知（手書き JSON）
+$completeJson = @"
+{
+  "files": [
+    {
+      "id": "$fileId",
+      "title": "vpn_package.zip"
+    }
+  ],
+  "channel_id": "$channelId",
+  "initial_comment": "VPN ZIP uploaded"
 }
-$completeJson = $completeBody | ConvertTo-Json -Depth 5
+"@
+
 Write-Host "[DEBUG] completeUploadExternal payload:"
 Write-Host $completeJson
 
@@ -94,7 +101,7 @@ if (-not $compResp.ok) {
     exit 1
 }
 
-# === 1. permalink付きメッセージ（参考情報として）
+# === 1. permalink付きメッセージ
 $permalink = $compResp.files[0].permalink
 Write-Host "[INFO] Slack File Permalink: $permalink"
 
@@ -113,7 +120,7 @@ if (-not $msgResp1.ok) {
     exit 1
 }
 
-# === 2. ファイル添付による共有（Slackでダウンロード可能にする）
+# === 2. ファイル添付共有
 $msgBody2 = @{
   channel  = $channelId
   text     = "VPN ZIP is ready. See attached file."
