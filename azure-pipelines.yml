@@ -10,12 +10,19 @@ variables:
 stages:
 - stage: Stage3_Package
   displayName: '📦 Slack DM Upload Test'
+  condition: succeeded()  # 明示的に stage 実行を許可
   jobs:
   - job: UploadTest
     displayName: 'Send dummy ZIP to Slack DM'
+    condition: succeeded()  # 明示的に job 実行を許可
     steps:
+    - script: |
+        echo "🧪 Checking files in stage3-package..."
+        dir stage3-package
+      displayName: '🧪 Debug: List stage3-package contents'
+
     - task: PowerShell@2
-      displayName: 'Package and Notify via Slack'
+      displayName: '📤 Package and Notify via Slack'
       inputs:
         filePath: stage3-package/package_and_notify.ps1
         failOnStderr: true
