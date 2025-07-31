@@ -1,3 +1,4 @@
+
 $ErrorActionPreference = "Stop"
 
 # === 環境変数の確認 ===
@@ -75,12 +76,12 @@ $fileId = $resp.file_id
 Write-Host "[INFO] Upload URL: $uploadUrl"
 Write-Host "[INFO] File ID: $fileId"
 
-# === アップロード（PUT） ===
+# === アップロード（PUT, application/zip） ===
 Write-Host "[INFO] Uploading file via PUT..."
 $response = Invoke-WebRequest -Method Put `
   -Uri $uploadUrl `
   -InFile $zip `
-  -ContentType "application/octet-stream" `
+  -ContentType "application/zip" `
   -UseBasicParsing
 Write-Host "[DEBUG] PUT Upload StatusCode: $($response.StatusCode)"
 $response.Headers.GetEnumerator() | ForEach-Object { Write-Host "[DEBUG] Header] $($_.Name): $($_.Value)" }
